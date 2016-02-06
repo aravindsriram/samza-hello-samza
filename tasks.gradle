@@ -1,0 +1,97 @@
+// install everything
+task installGrid(type: Exec) {
+    workingDir(project.projectDir)
+    commandLine("bin/grid", "install", "all")
+    outputs.upToDateWhen {
+        ["kafka", "zookeeper", "yarn"].every {
+            (new File(project.projectDir, "deploy/" + it)).exists()
+        }
+    }
+}
+
+// update the IDP Samza job
+task deployIdpSamza(dependsOn: [distTar, installGrid], type: Sync) {
+    into(new File(project.projectDir, "/deploy/samza"))
+    from(tarTree(distTar.archivePath))
+}
+
+
+// run everything
+task startGrid(type: Exec) {
+    workingDir(project.projectDir)
+    commandLine("bin/grid", "start", "all")
+    outputs.upToDateWhen {
+        // use running zookeeper as proxy
+        File zookeeperPidFile = new File("/tmp/zookeeper/zookeeper_server.pid")
+        zookeeperPidFile.exists() &&
+            "kill -0 ${zookeeperPidFile.text}".execute().waitFor() == 0
+    }
+}
+
+// stop everything
+task stopGrid(type: Exec) {
+    workingDir(project.projectDir)
+    commandLine("bin/grid", "stop", "all")
+}
+
+//
+// Samza helpers
+//
+
+// helper task to run Samza jobs
+class SamzaTask extends DefaultTask {
+    String configFile;
+
+    @TaskAction
+    def startSamza() {
+        project.exec {
+            workingDir(project.projectDir)
+            commandLine("deploy/samza/bin/run-job.sh",
+                    "--config-factory=org.apache.samza.config.factories.PropertiesConfigFactory",
+                    "--config-path=file://${project.projectDir}/deploy/samza/config/${configFile}")
+        }
+    }
+}
+
+task runActorFeed(dependsOn: [startGrid, deployIdpSamza], type: SamzaTask) {
+    configFile("actor-feed.properties")
+}
+
+task runNotifyIdService(dependsOn: [startGrid, deployIdpSamza], type: SamzaTask) {
+    configFile("notify-id-service.properties")
+}
+
+//
+// Kafka helpers
+//
+
+// show all Kafka topics
+task listKafkaTopics(type: Exec) {
+    workingDir(project.projectDir)
+    commandLine("deploy/kafka/bin/kafka-topics.sh",
+            "--zookeeper", "localhost:2181",
+            "--list")
+}
+
+// helper task to monitor a Kafka topic
+class KafkaDumpTask extends DefaultTask {
+    String topic;
+
+    @TaskAction
+    def dumpTopic() {
+        project.exec {
+            workingDir(project.projectDir)
+            commandLine("deploy/kafka/bin/kafka-console-consumer.sh",
+                    "--zookeeper", "localhost:2181",
+                    "--topic", "${topic}")
+        }
+    }
+}
+
+task dumpAlerts(dependsOn: startGrid, type: KafkaDumpTask) {
+    topic("alert")
+}
+
+task dumpActors(dependsOn: startGrid, type: KafkaDumpTask) {
+    topic("actor-feed")
+}
