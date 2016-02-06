@@ -33,7 +33,10 @@ To use gradle to build/run the idp-samza project:
 	$ ./gradlew dumpAlerts
 	( output of Kafka topic scrolls by)
 	CTRL-c
-
+	Note: Webrec needs to be running locally, connecting to localhost:9092 zookeeper instance.
+	      You can use the following URL to generate and Alert event in webrec
+          http://localhost:8080/webrec/alerts/opened?cid=ECCOUSA&uid=100196980009&consumerId=635fa700-aeff-cb24be-e879-a0fc297771db&type=MSA&iteration=1&sstart=null&cm=EMAIL&rrz=NO&amp;rs=10000270
+          
 	$ ./gradlew dumpActors
 	( output of Kafka topic scrolls by)
 	CTRL-c
